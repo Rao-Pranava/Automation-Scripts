@@ -138,6 +138,7 @@ display_help() {
     echo
     echo "# Export all disks of a VM and then Force start them"
     echo " bash Proxmox.sh --export --ID 101 --format qcow2 --disk all --start"
+    echo
     echo " Creating a VM "
     echo " bash Proxmox.sh --create --name newVM --OS Linux --RAM 2048 --ID 123"
 }
