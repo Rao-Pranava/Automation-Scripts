@@ -20,18 +20,13 @@ slow_type() {
 }
 
 # Function to check if the virtual machine exists
-check_vm_exists() {
-    
-    local vm_name="$1"
-    local vm_list=$(qm list | awk '{print $2}')
-
-    for vm in $vm_list; do
-        if [ "$vm" == "$vm_name" ]; then
-            return 0
-        fi
-    done
-
-    return 1
+check_vmid_exists() {
+    local vmid="$1"
+    if qm status "$vmid" &>/dev/null; then
+        return 0
+    else
+        return 1
+    fi
 }
 
 # Parse command line arguments
@@ -90,6 +85,12 @@ parse_arguments() {
     done
 }
 
+
+get_vm_name_from_vmid() {
+    local vmid="$1"
+    qm config "$vmid" | awk -F': ' '/^name:/ {print $2}'
+}
+
 # Add a function to display help information
 display_help() {
     echo "Usage: Proxmox.sh [OPTION]..."
@@ -124,10 +125,10 @@ display_help() {
     echo
     echo " Exporting "
     echo " # Export only scsi0 "
-    echo " bash Proxmox.sh --export --name myVM --format qcow2 --disk scsi0"
+    echo " bash Proxmox.sh --export --ID 101 --format qcow2 --disk scsi0"
     echo
     echo " # Export all disks of a VM "
-    echo " bash Proxmox.sh --export --name myVM --format qcow2 --disk all"
+    echo " bash Proxmox.sh --export --ID 101 --format qcow2 --disk all"
     echo
     echo " Creating a VM "
     echo " bash Proxmox.sh --create --name newVM --OS Linux --RAM 2048 --ID 123"
@@ -160,6 +161,23 @@ main() {
 
 Export_vm() {
 
+    if [ -z "$vmid" ]; then
+        echo "❌ VMID is required. Use --ID <VMID>"
+        exit 1
+    fi
+
+    if ! check_vmid_exists "$vmid"; then
+        echo "❌ VMID $vmid does not exist."
+        echo "👉 Run: qm list"
+        exit 1
+    fi
+
+    # Auto-fetch name ONLY if user didn't pass --name
+    if [ -z "$VM_name" ]; then
+        VM_name=$(get_vm_name_from_vmid "$vmid")
+    fi
+    [ -z "$VM_name" ] && VM_name="vm-$vmid"
+
     supported_formats="alloc-track backup-dump-drive blkdebug blklogwrites blkverify bochs cloop compress copy-before-write copy-on-read dmg file ftp ftps gluster host_cdrom host_device http https iscsi iser luks nbd null-aio null-co nvme parallels pbs preallocate qcow qcow2 qed quorum raw rbd replication snapshot-access throttle vdi vhdx vmdk vpc vvfat zeroinit"
 
     if ! echo "$supported_formats" | grep -qw "$F1"; then
@@ -168,11 +186,7 @@ Export_vm() {
         exit 1
     fi
 
-    VMID1=$(qm list | grep -i "$VM_name" | awk '{print $1}')
-    if [ -z "$VMID1" ]; then
-        echo "👉 Run: qm list   # to see available VMs"
-        exit 1
-    fi
+    VMID1="$vmid"
 
     running=$(qm status $VMID1 | awk '{print $2}')
     if [ "$running" == "running" ]; then
@@ -254,12 +268,24 @@ Import_vm() {
         fi
     fi
 
-    # Ensure VM exists
-    VMID=$(qm list | grep -i "$VM_name" | awk '{print $1}')
-    if [ -z "$VMID" ]; then
-        echo "👉 Run: qm list   # to see available VMs"
+    if [ -z "$vmid" ]; then
+        echo "❌ VMID is required. Use --ID <VMID>"
         exit 1
     fi
+
+    if ! check_vmid_exists "$vmid"; then
+        echo "❌ VMID $vmid does not exist."
+        echo "👉 Run: qm list"
+        exit 1
+    fi
+
+    # Auto-fetch name ONLY if user didn't pass --name
+    if [ -z "$VM_name" ]; then
+        VM_name=$(get_vm_name_from_vmid "$vmid")
+    fi
+    [ -z "$VM_name" ] && VM_name="vm-$vmid"
+
+    VMID1="$vmid"
 
     # Import the disk into Proxmox storage (keep original format!)
     if ! qm importdisk $VMID "$VM_FILE" $storage --format "$F1"; then
