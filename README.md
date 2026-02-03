@@ -60,6 +60,15 @@ Now, exit the editor
 
 # Useful Commands
 
+Install `jq` for the `Proxmox.sh` Script to work:
+
+```
+apt install jq
+```
+
+<img width="642" height="212" alt="image" src="https://github.com/user-attachments/assets/2c7f7388-c2dc-4a37-8092-b5cf28f3fbff" />
+
+
 If you want to download the file from your server to the local computer, you can use this command:
 ```
 scp root@<IP Address>:<File Location> .
