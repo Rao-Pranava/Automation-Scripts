@@ -141,6 +141,7 @@ display_help() {
     echo
     echo " Creating a VM "
     echo " bash Proxmox.sh --create --name newVM --OS Linux --RAM 2048 --ID 123"
+    echo
 }
 
 # Main function
