@@ -3,6 +3,7 @@
 # Global variables
 Import=0
 storage="local"
+FORCE_START=0
 
 
 # Defining funtions
@@ -77,6 +78,10 @@ parse_arguments() {
                 disk=$2
                 shift 2
                 ;;
+            --start)
+                FORCE_START=1
+                shift
+                ;;
             *)
                 echo "Invalid option: $1"
                 exit 1
@@ -111,6 +116,7 @@ display_help() {
     echo "  --OS OS                Specify the operating system type for a new virtual machine (Linux, Windows 10/11/7/8/Vista/XP)"
     echo "  --storage              Specify the Proxmox Storage for your VM"
     echo "  --disk DISK            Specify which disk(s) to handle:"
+    echo "  --start                Force start VM after export, even if it was initially stopped"
     echo "                         e.g., 'sata0', 'scsi0' for a specific disk"
     echo "                         or 'all' to handle all disks"
     echo
@@ -130,6 +136,8 @@ display_help() {
     echo " # Export all disks of a VM "
     echo " bash Proxmox.sh --export --ID 101 --format qcow2 --disk all"
     echo
+    echo "# Export all disks of a VM and then Force start them"
+    echo " bash Proxmox.sh --export --ID 101 --format qcow2 --disk all --start"
     echo " Creating a VM "
     echo " bash Proxmox.sh --create --name newVM --OS Linux --RAM 2048 --ID 123"
 }
@@ -188,9 +196,11 @@ Export_vm() {
 
     VMID1="$vmid"
 
-    running=$(qm status $VMID1 | awk '{print $2}')
-    if [ "$running" == "running" ]; then
-        qm stop $VMID1
+    original_state=$(qm status "$VMID1" | awk '{print $2}')
+    
+    if [ "$original_state" == "running" ]; then
+        echo "ℹ️ VM was running, stopping for export..."
+        qm stop "$VMID1"
     fi
 
     # Gather all disks of this VM
@@ -231,7 +241,15 @@ Export_vm() {
         echo "✅ Exported $disk -> ${VM_name}_${disk}.$F1"
     fi
 
-    qm start $VMID1
+    if [ "$FORCE_START" -eq 1 ]; then
+        echo "🚀 --start specified, starting VM $VMID1"
+        qm start "$VMID1"
+    elif [ "$original_state" == "running" ]; then
+        echo "🔁 Restoring original state: starting VM $VMID1"
+        qm start "$VMID1"
+    else
+        echo "⏸️ VM was originally stopped; leaving it stopped"
+    fi
     
     echo "🎉 Export complete. Files created in:"
     pwd
