@@ -191,7 +191,6 @@ Export_vm() {
     running=$(qm status $VMID1 | awk '{print $2}')
     if [ "$running" == "running" ]; then
         qm stop $VMID1
-        restart_after=1
     fi
 
     # Gather all disks of this VM
@@ -232,10 +231,8 @@ Export_vm() {
         echo "✅ Exported $disk -> ${VM_name}_${disk}.$F1"
     fi
 
-    if [ "$restart_after" == "1" ]; then
-        qm start $VMID1
-    fi
-
+    qm start $VMID1
+    
     echo "🎉 Export complete. Files created in:"
     pwd
 }
