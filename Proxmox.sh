@@ -188,7 +188,7 @@ Export_vm() {
     fi
     [ -z "$VM_name" ] && VM_name="vm-$vmid"
 
-    supported_formats="alloc-track backup-dump-drive blkdebug blklogwrites blkverify bochs cloop compress copy-before-write copy-on-read dmg file ftp ftps gluster host_cdrom host_device http https iscsi iser luks nbd null-aio null-co nvme parallels pbs preallocate qcow qcow2 qed quorum raw rbd replication snapshot-access throttle vdi vhdx vmdk vpc vvfat zeroinit"
+    supported_formats="raw qcow qcow2 vmdk vhdx vdi vpc parallels dmg cloop bochs"
 
     if ! echo "$supported_formats" | grep -qw "$F1"; then
         slow_type "Unsupported format. Please choose from the following supported formats:"
