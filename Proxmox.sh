@@ -120,27 +120,99 @@ display_help() {
     echo "                         e.g., 'sata0', 'scsi0' for a specific disk"
     echo "                         or 'all' to handle all disks"
     echo
-    echo "Examples:"
+        echo "Examples:"
     echo
-    echo " Importing "
-    echo " # Import VM (Linux → attach disks as scsi) "
-    echo " bash Proxmox.sh --import --source 192.168.1.100 --name myLinuxVM --format vmdk --disk all --storage local --OS Linux"
+
+    echo "============================="
+    echo " Export Virtual Machines"
+    echo "============================="
     echo
-    echo " # Import VM (Windows → attach disks as sata) "
-    echo " bash Proxmox.sh --import --source 192.168.1.100 --name myWinVM --format vmdk --disk all --storage local --OS \"Windows 10\""
+
+    echo " # Export all disks (preserve original formats)"
+    echo " bash Proxmox.sh --export --ID 101 --disk all"
     echo
-    echo " Exporting "
-    echo " # Export only scsi0 "
-    echo " bash Proxmox.sh --export --ID 101 --format qcow2 --disk scsi0"
+
+    echo " # Export a single disk"
+    echo " bash Proxmox.sh --export --ID 101 --disk scsi0"
     echo
-    echo " # Export all disks of a VM "
-    echo " bash Proxmox.sh --export --ID 101 --format qcow2 --disk all"
+
+    echo " # Export all disks as QCOW2"
+    echo " bash Proxmox.sh --export --ID 101 --disk all --format qcow2"
     echo
-    echo "# Export all disks of a VM and then Force start them"
-    echo " bash Proxmox.sh --export --ID 101 --format qcow2 --disk all --start"
+
+    echo " # Export all disks as RAW"
+    echo " bash Proxmox.sh --export --ID 101 --disk all --format raw"
     echo
-    echo " Creating a VM "
-    echo " bash Proxmox.sh --create --name newVM --OS Linux --RAM 2048 --ID 123"
+
+    echo " # Export a Windows VM (EFI + TPM included automatically)"
+    echo " bash Proxmox.sh --export --ID 303 --disk all"
+    echo
+
+    echo " # Export and start the VM again afterwards"
+    echo " bash Proxmox.sh --export --ID 101 --disk all --start"
+    echo
+
+    echo "============================="
+    echo " Import Virtual Machines"
+    echo "============================="
+    echo
+
+    echo " # Import a local disk image"
+    echo " bash Proxmox.sh --import --ID 200 --name UbuntuServer --format qcow2 --disk all --storage local --OS Linux"
+    echo
+
+    echo " # Import from another server"
+    echo " bash Proxmox.sh --import --source 192.168.1.100 --ID 200 --name UbuntuServer --format qcow2 --disk all --storage local --OS Linux"
+    echo
+
+    echo " # Import a Windows VM"
+    echo " bash Proxmox.sh --import --source 192.168.1.100 --ID 300 --name WindowsServer --format raw --disk all --storage local-hdd --OS \"Windows 11\""
+    echo
+
+    echo " # Import a single disk only"
+    echo " bash Proxmox.sh --import --ID 300 --name WindowsServer --format qcow2 --disk sata0 --storage local"
+    echo
+
+    echo "============================="
+    echo " Create Virtual Machines"
+    echo "============================="
+    echo
+
+    echo " # Create a Linux VM"
+    echo " bash Proxmox.sh --create --ID 500 --name Ubuntu --OS Linux --RAM 4096 --storage local"
+    echo
+
+    echo " # Create a Windows 11 VM"
+    echo " bash Proxmox.sh --create --ID 501 --name Windows11 --OS \"Windows 11\" --RAM 8192 --storage local-hdd"
+    echo
+
+    echo "============================="
+    echo " Useful Options"
+    echo "============================="
+    echo
+
+    echo " --disk all"
+    echo "      Export or import every supported disk attached to the VM."
+    echo
+
+    echo " --disk scsi0"
+    echo "      Operate only on the specified disk."
+    echo
+
+    echo " --format"
+    echo "      Optional."
+    echo "      If omitted, the original disk format is preserved."
+    echo
+
+    echo " --storage"
+    echo "      Import/Create: Destination Proxmox storage."
+    echo "      Export: Used only as a fallback if the VM configuration"
+    echo "              does not contain the storage name."
+    echo
+
+    echo " --start"
+    echo "      Start the VM after exporting."
+    echo
     echo
 }
 
