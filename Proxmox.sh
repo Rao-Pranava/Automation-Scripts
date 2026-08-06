@@ -214,6 +214,9 @@ Export_vm() {
 
     disk_names=$(echo "$disk_info" | awk -F': ' '{print $1}')
 
+    METADATA_FILE="${VM_name}_metadata.conf"
+    echo "# Disk Mapping" > "$METADATA_FILE"
+
     if [ -z "$disk_names" ]; then
         echo "❌ No disks found for VM $VMID1 on storage $storage"
         exit 1
@@ -223,6 +226,7 @@ Export_vm() {
         # Export all disks
         for disk_name in $disk_names; do
             echo "🔄 Exporting disk: $disk_name ..."
+            echo "${disk_name}=${disk_name}" >> "$METADATA_FILE"
             # Get the complete storage reference from the VM configuration
             DiskRef=$(qm config "$VMID1" | awk -F': ' -v disk="$disk_name" '
                 $1==disk {
@@ -241,7 +245,7 @@ Export_vm() {
             DiskPath=$(pvesm path "$DiskRef")
 
             # Detect the original disk format
-            VMF1=$(qemu-img info --output=json "$DiskPath" | jq -r .format)
+            VMF1=$(qemu-img info "$DiskPath" | awk -F': ' '/file format/ {print $2}')
 
             # Preserve original format unless the user requested conversion
             ExportFormat="${F1:-$VMF1}"
@@ -279,7 +283,7 @@ Export_vm() {
 
         DiskPath=$(pvesm path "$DiskRef")
 
-        VMF1=$(qemu-img info --output=json "$DiskPath" | jq -r .format)
+        VMF1=$(qemu-img info "$DiskPath" | awk -F': ' '/file format/ {print $2}')
 
         ExportFormat="${F1:-$VMF1}"
 
@@ -370,46 +374,79 @@ Import_vm() {
         exit 1
     fi
 
-    # Decide bus type based on OS
-    if [[ "$COS" =~ [Ll]inux ]]; then
-        bus="scsi"
-    else
-        bus="sata"
-    fi
+    METADATA_FILE="${VM_name}_metadata.conf"
 
-    # 🆕 Ensure the chosen controller exists, add if missing
-    if [[ "$bus" == "scsi" ]]; then
-        if ! qm config "$VMID" | grep -q "^scsihw"; then
-            qm set "$VMID" --scsihw virtio-scsi-single
-            echo "ℹ️ Added VirtIO SCSI controller to VM $VMID"
-        fi
-    elif [[ "$bus" == "sata" ]]; then
-        if ! qm config "$VMID" | grep -q "sata[0-9]:"; then
-            qm set "$VMID" --sata0 none
-            echo "ℹ️ Added SATA controller to VM $VMID"
-        fi
-    fi
+    if [[ -f "$METADATA_FILE" ]]; then
 
-    # Attach disks
-    if [[ "$disk" == "all" ]]; then
+        echo "📄 Found metadata file."
+
+        mapfile -t mappings < <(grep -v '^#' "$METADATA_FILE")
+
         index=0
+
         for unused in $unused_disks; do
+
             path=$(qm config "$VMID" | grep "^$unused:" | cut -d: -f2- | awk -F, '{print $1}' | xargs)
-            qm set "$VMID" --${bus}${index} "$path"
-            echo "✅ Attached $path to ${bus}${index}"
-            if [ $index -eq 0 ]; then
-                qm set "$VMID" --boot order=${bus}0
-                echo "✅ Set ${bus}0 as boot disk"
+
+            diskbus=$(echo "${mappings[$index]}" | cut -d= -f2)
+
+            qm set "$VMID" --"$diskbus" "$path"
+
+            echo "✅ Attached $path -> $diskbus"
+
+            if [[ $index -eq 0 ]]; then
+                qm set "$VMID" --boot order="$diskbus"
             fi
-            index=$((index+1))
+
+            ((index++))
+
         done
+
     else
-        target=$disk
-        first_unused=$(echo "$unused_disks" | head -n 1)
-        path=$(qm config "$VMID" | grep "^$first_unused:" | cut -d: -f2- | awk -F, '{print $1}')
-        qm set "$VMID" --$target "$path"
-        qm set "$VMID" --boot order=$target
-        echo "✅ Attached $path to $target (boot)"
+
+        echo "⚠️ No metadata found. Falling back to OS defaults."
+
+        if [[ "$COS" =~ [Ll]inux ]]; then
+            bus="scsi"
+        else
+            bus="sata"
+        fi
+
+        # 🆕 Ensure the chosen controller exists, add if missing
+        if [[ "$bus" == "scsi" ]]; then
+            if ! qm config "$VMID" | grep -q "^scsihw"; then
+                qm set "$VMID" --scsihw virtio-scsi-single
+                echo "ℹ️ Added VirtIO SCSI controller to VM $VMID"
+            fi
+        elif [[ "$bus" == "sata" ]]; then
+            if ! qm config "$VMID" | grep -q "sata[0-9]:"; then
+                qm set "$VMID" --sata0 none
+                echo "ℹ️ Added SATA controller to VM $VMID"
+            fi
+        fi
+
+        # Attach disks
+        if [[ "$disk" == "all" ]]; then
+            index=0
+            for unused in $unused_disks; do
+                path=$(qm config "$VMID" | grep "^$unused:" | cut -d: -f2- | awk -F, '{print $1}' | xargs)
+                qm set "$VMID" --${bus}${index} "$path"
+                echo "✅ Attached $path to ${bus}${index}"
+                if [ $index -eq 0 ]; then
+                    qm set "$VMID" --boot order=${bus}0
+                    echo "✅ Set ${bus}0 as boot disk"
+                fi
+                index=$((index+1))
+            done
+        else
+            target=$disk
+            first_unused=$(echo "$unused_disks" | head -n 1)
+            path=$(qm config "$VMID" | grep "^$first_unused:" | cut -d: -f2- | awk -F, '{print $1}')
+            qm set "$VMID" --$target "$path"
+            qm set "$VMID" --boot order=$target
+            echo "✅ Attached $path to $target (boot)"
+        fi
+
     fi
 
     echo "🎉 Import completed for VM $VMID"
