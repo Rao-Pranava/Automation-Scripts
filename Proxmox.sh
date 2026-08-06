@@ -190,10 +190,13 @@ Export_vm() {
 
     supported_formats="raw qcow qcow2 vmdk vhdx vdi vpc parallels dmg cloop bochs"
 
-    if ! echo "$supported_formats" | grep -qw "$F1"; then
-        slow_type "Unsupported format. Please choose from the following supported formats:"
-        echo "$supported_formats"
-        exit 1
+    # Validate format only if the user supplied one
+    if [[ -n "$F1" ]]; then
+        if ! echo "$supported_formats" | grep -qw "$F1"; then
+            slow_type "Unsupported format. Please choose from the following supported formats:"
+            echo "$supported_formats"
+            exit 1
+        fi
     fi
 
     VMID1="$vmid"
@@ -205,9 +208,11 @@ Export_vm() {
         qm stop "$VMID1"
     fi
 
-    # Gather all disks of this VM
-    disk_info=$(qm config $VMID1 | grep -E "^(ide|sata|scsi|virtio)[0-9]+:")
-    disk_names=$(echo "$disk_info" | awk -F ': ' '{print $1}')
+    # Gather every exportable disk/device attached to the VM
+    disk_info=$(qm config "$VMID1" | grep -E \
+    '^(ide|sata|scsi|virtio)[0-9]+:|^efidisk[0-9]+:|^tpmstate[0-9]+:')
+
+    disk_names=$(echo "$disk_info" | awk -F': ' '{print $1}')
 
     if [ -z "$disk_names" ]; then
         echo "❌ No disks found for VM $VMID1 on storage $storage"
@@ -218,13 +223,39 @@ Export_vm() {
         # Export all disks
         for disk_name in $disk_names; do
             echo "🔄 Exporting disk: $disk_name ..."
-            VMDiskname=$(qm config $VMID1 | grep "$disk_name:" | awk '{print $3}' FS=: OFS=, | cut -d, -f1)
-            Path="$storage:$VMDiskname"
-            DiskPath=$(pvesm path $Path)
+            # Get the complete storage reference from the VM configuration
+            DiskRef=$(qm config "$VMID1" | awk -F': ' -v disk="$disk_name" '
+                $1==disk {
+                split($2,a,",")
+                print a[1]
+            }')
+
+            # If the storage reference is incomplete, fall back to --storage
+            if [[ "$DiskRef" != *:* ]]; then
+                DiskRef="${storage}:${DiskRef}"
+            fi
+
+            echo "📦 Storage Reference : $DiskRef"
+
+            # Resolve the actual disk path
+            DiskPath=$(pvesm path "$DiskRef")
+
+            # Detect the original disk format
             VMF1=$(qemu-img info --output=json "$DiskPath" | jq -r .format)
 
-            qemu-img convert -f "$VMF1" -O $F1 "$DiskPath" "./${VM_name}_${disk_name}.$F1"
-            echo "✅ Exported $disk_name -> ${VM_name}_${disk_name}.$F1"
+            # Preserve original format unless the user requested conversion
+            ExportFormat="${F1:-$VMF1}"
+
+            echo "📄 Original Format : $VMF1"
+            echo "📦 Export Format   : $ExportFormat"
+
+            qemu-img convert \
+                -f "$VMF1" \
+                -O "$ExportFormat" \
+                "$DiskPath" \
+                "./${VM_name}_${disk_name}.${ExportFormat}"
+
+            echo "✅ Exported $disk_name -> ${VM_name}_${disk_name}.${ExportFormat}"
         done
     else
         # Export a single disk
@@ -234,13 +265,34 @@ Export_vm() {
             exit 1
         fi
 
-        VMDiskname=$(qm config $VMID1 | grep "$disk:" | awk '{print $3}' FS=: OFS=, | cut -d, -f1)
-        Path="$storage:$VMDiskname"
-        DiskPath=$(pvesm path $Path)
+        DiskRef=$(qm config "$VMID1" | awk -F': ' -v disk="$disk" '
+            $1==disk {
+            split($2,a,",")
+            print a[1]
+        }')
+
+        if [[ "$DiskRef" != *:* ]]; then
+            DiskRef="${storage}:${DiskRef}"
+        fi
+
+        echo "📦 Storage Reference : $DiskRef"
+
+        DiskPath=$(pvesm path "$DiskRef")
+
         VMF1=$(qemu-img info --output=json "$DiskPath" | jq -r .format)
 
-        qemu-img convert -f "$VMF1" -O $F1 "$DiskPath" "./${VM_name}_${disk}.$F1"
-        echo "✅ Exported $disk -> ${VM_name}_${disk}.$F1"
+        ExportFormat="${F1:-$VMF1}"
+
+        echo "📄 Original Format : $VMF1"
+        echo "📦 Export Format   : $ExportFormat"
+
+        qemu-img convert \
+            -f "$VMF1" \
+            -O "$ExportFormat" \
+            "$DiskPath" \
+            "./${VM_name}_${disk}.${ExportFormat}"
+
+        echo "✅ Exported $disk -> ${VM_name}_${disk}.${ExportFormat}"
     fi
 
     if [ "$FORCE_START" -eq 1 ]; then
